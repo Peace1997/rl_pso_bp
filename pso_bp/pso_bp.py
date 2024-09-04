@@ -11,25 +11,29 @@ EPOCH = 1000  # 训练次数
 
 def data_processing():
     # 读取每一行的数据
-    with open("../data_new.csv", "r", encoding="utf-8") as csvfile:
+    with open("data/jss/jjs_thesis_train.csv", "r", encoding="utf-8") as csvfile:
         reader = csv.reader(csvfile)
         rows = [row for row in reader]
     csvfile.close()
+    # 读取文件行数
+    file_row = len(rows)
+    # 读取文件列数
+    file_col = len(rows[0])
     # 将每个str数据转换为float
-    for i in range(len(rows)):
-        for j in range(7):
-            rows[i][j] = float(rows[i][j])
+    for i in range(file_row):
+        for j in range(file_col):
+            rows[i][j] = float(rows[i][j].lstrip("\ufeff"))
 
     # 读取每一列的数据
     columns = []
-    for i in range(7):
+    for i in range(file_col):
         column = [row[i] for row in rows]
         columns.append(column)
 
     # 获取每一列数据的最大值和最小值
     columns_max = []
     columns_min = []
-    for i in range(7):
+    for i in range(file_col):
         one_max = max(columns[i])
         one_min = min(columns[i])
         columns_max.append(one_max)
@@ -37,27 +41,36 @@ def data_processing():
 
     # 输入输出数据归一化处理
     for i in range(len(rows)):
-        for j in range(7):
-            rows[i][j] = 0.8 * (float(rows[i][j]) - columns_min[j]) / (columns_max[j] - columns_min[j]) + 0.1
+        for j in range(file_col):
+            rows[i][j] = (
+                0.8 * (float(rows[i][j]) - columns_min[j]) / (columns_max[j] - columns_min[j]) + 0.1
+            )
 
     # 前33个数据作为训练数据，后5个数据作为测试数据
     train_data_x = []
     train_data_y = []
     test_data_x = []
     test_data_y = []
-    for i in range(189):  # 189
-        train_data_x.append(torch.tensor(rows[i][:6], dtype=torch.float))
+    # for i in range(189):  # 189
+    #     train_data_x.append(torch.tensor(rows[i][:6], dtype=torch.float))
+    #     train_data_y.append(torch.tensor(rows[i][-1], dtype=torch.float))
+    # for i in range(189, 237):  # 189,237
+    #     test_data_x.append(torch.tensor(rows[i][:6], dtype=torch.float))
+    #     test_data_y.append(torch.tensor(rows[i][-1], dtype=torch.float))
+    for i in range(file_row):
+        train_data_x.append(torch.tensor(rows[i][:15], dtype=torch.float))
         train_data_y.append(torch.tensor(rows[i][-1], dtype=torch.float))
-    for i in range(189, 237):  # 189,237
-        test_data_x.append(torch.tensor(rows[i][:6], dtype=torch.float))
-        test_data_y.append(torch.tensor(rows[i][-1], dtype=torch.float))
-
     # 训练数据和测试数据
-    train_data_x = torch.tensor([item.cpu().detach().numpy() for item in train_data_x])
-    train_data_y = torch.tensor(train_data_y, dtype=torch.float)
-    test_data_x = torch.tensor([item.cpu().detach().numpy() for item in test_data_x])
-    test_data_y = torch.tensor(test_data_y, dtype=torch.float)
-    return train_data_x, train_data_y, test_data_x, test_data_y
+    train_data_x = torch.tensor(
+        np.array([item.cpu().detach().numpy() for item in train_data_x]),
+        dtype=torch.float,
+    )
+    train_data_y = torch.tensor(np.array(train_data_y), dtype=torch.float)
+    # test_data_x = torch.tensor(
+    #     np.array([item.cpu().detach().numpy() for item in test_data_x]), dtype=torch.float
+    # )
+    # test_data_y = torch.tensor(np.array(test_data_y), dtype=torch.float)
+    return train_data_x, train_data_y  # , test_data_x, test_data_y
 
 
 class Net(torch.nn.Module):
@@ -84,27 +97,40 @@ class Net(torch.nn.Module):
         return x
 
 
-# 初始化神经网络常用参数
-
-
 class Particle:
-    def __init__(self, dim, x_range, v_range):
+    def __init__(self, intput_dim, hidden_dim, output_dim, sum_dim, x_range, v_range):
         """
         单个粒子结构
         :param dim: 粒子维度
         :param x_range: 位置范围
         :param v_range: 速度范围
         """
-        self.x = np.random.uniform(x_range[0], x_range[1], dim)
-        self.v = np.random.uniform(v_range[0], v_range[1], (dim,))
+        self.x = np.random.uniform(x_range[0], x_range[1], sum_dim)
+        self.v = np.random.uniform(v_range[0], v_range[1], (sum_dim,))
         self.Pbest = np.inf
-        self.Pbest_pos = np.zeros((dim,))
-        self.Pbest_net = Net(6, 13, 1)
+        self.Pbest_pos = np.zeros((sum_dim,))
+        self.Pbest_net = Net(input_dim, hidden_dim, output_dim)
         self.Pbest_net_optimizer = torch.optim.Adam(self.Pbest_net.parameters(), lr=0.001)
 
 
 class PSO_BP:
-    def __init__(self, num_particle, dim, x_range, v_range, w_max, w_min, max_iter, min_fitness):
+    def __init__(
+        self,
+        num_particle,
+        input_dim,
+        hidden_dim,
+        output_dim,
+        sum_dim,
+        x_range,
+        v_range,
+        w_max,
+        w_min,
+        w,
+        c1,
+        c2,
+        max_iter,
+        min_fitness,
+    ):
         """
         一群粒子结构
         :param num_particle: 粒子数
@@ -115,28 +141,36 @@ class PSO_BP:
         :param c1: 学习因子1
         :param c2: 学习因子2
         """
-        self.p = np.array([Particle(dim, x_range, v_range) for i in range(num_particle)])
+        self.p = np.array(
+            [
+                Particle(input_dim, hidden_dim, output_dim, sum_dim, x_range, v_range)
+                for i in range(num_particle)
+            ]
+        )
         self.Gbest_loss = 1
         self.Pre_Gbest_loss = 1
-        self.Gbest_pos = np.zeros(dim)
+        self.Gbest_pos = np.zeros(sum_dim)
         self.x_range = x_range
         self.v_range = v_range
         self.w_max = w_max
         self.w_min = w_min
         self.num_particle = num_particle
-        self.dim = dim
+        self.input_dim = input_dim
+        self.hidden_dim = hidden_dim
+        self.output_dim = output_dim
+        self.sum_dim = sum_dim
 
-        self.c1 = 2  # 学习因子1
-        self.c2 = 2  # 学习因子2
-        self.w = 0.5
+        self.c1 = c1
+        self.c2 = c2
+        self.w = w
         self.max_iter = max_iter
         self.min_fitness = min_fitness
         self.iter = 0
 
         self.iter_no_improve_step = 0
 
-        self.particle_net = Net(6, 13, 1)
-        self.Gbest_net = Net(6, 13, 1)
+        self.particle_net = Net(self.input_dim, self.hidden_dim, self.output_dim)
+        self.Gbest_net = Net(self.input_dim, self.hidden_dim, self.output_dim)
         self.Gbest_optimizer = torch.optim.Adam(self.Gbest_net.parameters(), lr=0.001)
 
     def optimizer(self, X, Y, c1, c2):
@@ -161,7 +195,11 @@ class PSO_BP:
                     particle.Pbest = fitness
                     particle.Pbest_pos = particle.x.copy()
                     self.update_and_backward_Pbest(
-                        particle.Pbest_net, particle.Pbest_net_optimizer, X, Y, particle.Pbest_pos
+                        particle.Pbest_net,
+                        particle.Pbest_net_optimizer,
+                        X,
+                        Y,
+                        particle.Pbest_pos,
                     )
                 else:
                     particle.Pbest = self.backward_Pbest(
@@ -195,8 +233,16 @@ class PSO_BP:
 
                 particle.v = (
                     self.w * particle.v
-                    + (self.c1 * np.random.uniform(1.0, 1.0, (self.dim,)) * (particle.Pbest_pos - particle.x))
-                    + (self.c2 * np.random.uniform(1.1, 1.0, (self.dim,)) * (self.Gbest_pos - particle.x))
+                    + (
+                        self.c1
+                        * np.random.uniform(1.0, 1.0, (self.sum_dim,))
+                        * (particle.Pbest_pos - particle.x)
+                    )
+                    + (
+                        self.c2
+                        * np.random.uniform(1.1, 1.0, (self.sum_dim,))
+                        * (self.Gbest_pos - particle.x)
+                    )
                 )
                 # particle.v  =np.clip(particle.v,-0.2,0.2)
                 particle.x = particle.x + particle.v
@@ -213,7 +259,12 @@ class PSO_BP:
         :return:
         """
         self.w, self.c1, self.c2 = w, c1, c2
-        mean_pbets, mean_gbest, mean_x, mean_diverse = [0.0] * 105, [0.0] * 105, [0.0] * 105, 0
+        mean_pbets, mean_gbest, mean_x, mean_diverse = (
+            [0.0] * 105,
+            [0.0] * 105,
+            [0.0] * 105,
+            0,
+        )
         for particle in self.p:
             fitness = self.forward_and_compute_particle_loss(X, Y, particle.x)
 
@@ -221,10 +272,16 @@ class PSO_BP:
                 particle.Pbest = fitness
                 particle.Pbest_pos = particle.x.copy()
                 self.update_and_backward_Pbest(
-                    particle.Pbest_net, particle.Pbest_net_optimizer, X, Y, particle.Pbest_pos
+                    particle.Pbest_net,
+                    particle.Pbest_net_optimizer,
+                    X,
+                    Y,
+                    particle.Pbest_pos,
                 )
             else:
-                particle.Pbest = self.backward_Pbest(particle.Pbest_net, particle.Pbest_net_optimizer, X, Y)
+                particle.Pbest = self.backward_Pbest(
+                    particle.Pbest_net, particle.Pbest_net_optimizer, X, Y
+                )
 
             if fitness - self.Gbest_loss < 1.0e-64:
                 self.Gbest_loss = fitness
@@ -254,8 +311,16 @@ class PSO_BP:
             mean_x += particle.x
             particle.v = (
                 self.w * particle.v
-                + (self.c1 * np.random.uniform(1.0, 1.0, (self.dim,)) * (particle.Pbest_pos - particle.x))
-                + (self.c2 * np.random.uniform(1.0, 1.0, (self.dim,)) * (self.Gbest_pos - particle.x))
+                + (
+                    self.c1
+                    * np.random.uniform(1.0, 1.0, (self.sum_dim,))
+                    * (particle.Pbest_pos - particle.x)
+                )
+                + (
+                    self.c2
+                    * np.random.uniform(1.0, 1.0, (self.sum_dim,))
+                    * (self.Gbest_pos - particle.x)
+                )
             )
             particle.v = np.clip(particle.v, -0.5, 0.5)
             particle.x = particle.x + particle.v
@@ -281,7 +346,12 @@ class PSO_BP:
         """
         self.w, self.c1, self.c2 = w, c1, c2
         mean_pbest_loss = 0.0
-        mean_pbets, mean_gbest, mean_x, mean_diverse = [0.0] * 105, [0.0] * 105, [0.0] * 105, 0
+        mean_pbets, mean_gbest, mean_x, mean_diverse = (
+            [0.0] * 105,
+            [0.0] * 105,
+            [0.0] * 105,
+            0,
+        )
         for particle in self.p:
             fitness = self.forward_and_compute_particle_loss(X, Y, particle.x)
 
@@ -289,10 +359,16 @@ class PSO_BP:
                 particle.Pbest = fitness
                 particle.Pbest_pos = particle.x.copy()
                 self.update_and_backward_Pbest(
-                    particle.Pbest_net, particle.Pbest_net_optimizer, X, Y, particle.Pbest_pos
+                    particle.Pbest_net,
+                    particle.Pbest_net_optimizer,
+                    X,
+                    Y,
+                    particle.Pbest_pos,
                 )
             else:
-                particle.Pbest = self.backward_Pbest(particle.Pbest_net, particle.Pbest_net_optimizer, X, Y)
+                particle.Pbest = self.backward_Pbest(
+                    particle.Pbest_net, particle.Pbest_net_optimizer, X, Y
+                )
             mean_pbest_loss += particle.Pbest
             if fitness - self.Gbest_loss < 1.0e-64:
                 self.Gbest_loss = fitness
@@ -323,8 +399,16 @@ class PSO_BP:
             mean_x += particle.x
             particle.v = (
                 self.w * particle.v
-                + (self.c1 * np.random.uniform(1.0, 1.0, (self.dim,)) * (particle.Pbest_pos - particle.x))
-                + (self.c2 * np.random.uniform(1.0, 1.0, (self.dim,)) * (self.Gbest_pos - particle.x))
+                + (
+                    self.c1
+                    * np.random.uniform(1.0, 1.0, (self.sum_dim,))
+                    * (particle.Pbest_pos - particle.x)
+                )
+                + (
+                    self.c2
+                    * np.random.uniform(1.0, 1.0, (self.sum_dim,))
+                    * (self.Gbest_pos - particle.x)
+                )
             )
             particle.v = np.clip(particle.v, -0.5, 0.5)
             particle.x = particle.x + particle.v
@@ -369,9 +453,23 @@ class PSO_BP:
         :return: 适应度值
         """
         particle_x = torch.tensor(particle_x, dtype=torch.float)
-        self.particle_net.hidden.weight.data = torch.nn.Parameter(particle_x[:78].reshape(13, 6))
-        self.particle_net.hidden.bias = torch.nn.Parameter(particle_x[78:91])
-        self.particle_net.predict.weight.data = torch.nn.Parameter(particle_x[91:104].reshape(1, 13))
+        self.particle_net.hidden.weight.data = torch.nn.Parameter(
+            particle_x[: self.hidden_dim * self.input_dim].reshape(self.hidden_dim, self.input_dim)
+        )
+        self.particle_net.hidden.bias = torch.nn.Parameter(
+            particle_x[
+                self.hidden_dim * self.input_dim : self.hidden_dim * self.input_dim
+                + self.hidden_dim
+            ]
+        )
+        self.particle_net.predict.weight.data = torch.nn.Parameter(
+            particle_x[
+                self.hidden_dim * self.input_dim
+                + self.hidden_dim : self.hidden_dim * self.input_dim
+                + self.hidden_dim
+                + self.hidden_dim
+            ].reshape(self.output_dim, self.hidden_dim)
+        )
         self.particle_net.predict.bias = torch.nn.Parameter(particle_x[104:105])
         prediction = self.particle_net(X)
         loss = F.mse_loss(prediction.reshape(-1), Y)
@@ -427,12 +525,12 @@ class PSO_BP:
         return Gbest_loss
 
     def compute_obs(self, c1, c2):
-        train_data_x, train_data_y, test_data_x, test_data_y = data_processing()
-        iter = self.optimizer(test_data_x, test_data_y, c1, c2)
-        train_output = self.Gbest_net(test_data_x)
-        print("test_data_y (label):", test_data_y)
+        train_data_x, train_data_y = data_processing()
+        iter = self.optimizer(train_data_x, train_data_y, c1, c2)
+        train_output = self.Gbest_net(train_data_x)
+        print("train_data_y (label):", train_data_y)
         print("train_output:", train_output)
-        train_loss = F.mse_loss(train_output.reshape(-1), test_data_y)
+        train_loss = F.mse_loss(train_output.reshape(-1), train_data_y)
 
         print("\ntrain loss:", train_loss)
 
@@ -447,7 +545,7 @@ class PSO_BP:
         return obs
 
     def compute_one_obs(self, w, c1, c2):
-        train_data_x, train_data_y, test_data_x, test_data_y = data_processing()
+        train_data_x, train_data_y = data_processing()
         for i in range(4):
             train_loss, mean_pbest, mean_gbest, mean_diverse = self.one_optimizer(
                 train_data_x, train_data_y, w, c1, c2
@@ -461,7 +559,7 @@ class PSO_BP:
         return obs, mean_diverse
 
     def final_compute_one_obs(self, w, c1, c2):
-        train_data_x, train_data_y, test_data_x, test_data_y = data_processing()
+        train_data_x, train_data_y = data_processing()
         for i in range(5):
             obs = self.final_one_optimizer(train_data_x, train_data_y, w, c1, c2)
         return obs
@@ -471,7 +569,12 @@ class PSO_BP:
 
 if __name__ == "__main__":
     num_particle = 20  # 种群数量
-    dim = (13 * 6) + 13 + (13 * 1) + 1  # 粒子维数
+    input_dim = 15  # 输入维数
+    output_dim = 1  # 输出维数
+    hidden_dim = 32  # 隐藏层维数
+    sum_dim = (
+        (hidden_dim * input_dim) + hidden_dim + (hidden_dim * output_dim) + output_dim
+    )  # 粒子维数
     x_range = [-1, 1]  # 位置范围
     v_range = [-0.5, 0.5]  # 速度范围
     w_max = 0.9  # 惯性权重最大值
@@ -479,5 +582,20 @@ if __name__ == "__main__":
     max_iter = 300  # 最大迭代次数
     min_fitness = 0.001  # 目标适应值
     w, c1, c2 = 0.5, 0.5, 1.9  # 2.0,2.0#0.5,1.9#2.0,2.0#0.5,1.9
-    pso_bp = PSO_BP(num_particle, dim, x_range, v_range, w_max, w_min, max_iter, min_fitness)
+    pso_bp = PSO_BP(
+        num_particle,
+        input_dim,
+        hidden_dim,
+        output_dim,
+        sum_dim,
+        x_range,
+        v_range,
+        w_max,
+        w_min,
+        w,
+        c1,
+        c2,
+        max_iter,
+        min_fitness,
+    )
     print(pso_bp.final_compute_one_obs(w, c1, c2))
