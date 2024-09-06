@@ -52,10 +52,10 @@ def data_processing():
     test_data_x = []
     test_data_y = []
     # for i in range(189):  # 189
-    #     train_data_x.append(torch.tensor(rows[i][:6], dtype=torch.float))
+    #     train_data_x.append(torch.tensor(rows[i][:self.input_dim], dtype=torch.float))
     #     train_data_y.append(torch.tensor(rows[i][-1], dtype=torch.float))
     # for i in range(189, 237):  # 189,237
-    #     test_data_x.append(torch.tensor(rows[i][:6], dtype=torch.float))
+    #     test_data_x.append(torch.tensor(rows[i][:self.input_dim], dtype=torch.float))
     #     test_data_y.append(torch.tensor(rows[i][-1], dtype=torch.float))
     for i in range(file_row):
         train_data_x.append(torch.tensor(rows[i][:15], dtype=torch.float))
@@ -98,7 +98,7 @@ class Net(torch.nn.Module):
 
 
 class Particle:
-    def __init__(self, intput_dim, hidden_dim, output_dim, sum_dim, x_range, v_range):
+    def __init__(self, input_dim, hidden_dim, output_dim, sum_dim, x_range, v_range):
         """
         单个粒子结构
         :param dim: 粒子维度
@@ -173,7 +173,7 @@ class PSO_BP:
         self.Gbest_net = Net(self.input_dim, self.hidden_dim, self.output_dim)
         self.Gbest_optimizer = torch.optim.Adam(self.Gbest_net.parameters(), lr=0.001)
 
-    def optimizer(self, X, Y, c1, c2):
+    def pso_bp_optimizer(self, X, Y, c1, c2):
         """
         迭代优化
 
@@ -260,9 +260,9 @@ class PSO_BP:
         """
         self.w, self.c1, self.c2 = w, c1, c2
         mean_pbets, mean_gbest, mean_x, mean_diverse = (
-            [0.0] * 105,
-            [0.0] * 105,
-            [0.0] * 105,
+            [0.0] * self.sum_dim,
+            [0.0] * self.sum_dim,
+            [0.0] * self.sum_dim,
             0,
         )
         for particle in self.p:
@@ -347,9 +347,9 @@ class PSO_BP:
         self.w, self.c1, self.c2 = w, c1, c2
         mean_pbest_loss = 0.0
         mean_pbets, mean_gbest, mean_x, mean_diverse = (
-            [0.0] * 105,
-            [0.0] * 105,
-            [0.0] * 105,
+            [0.0] * self.sum_dim,
+            [0.0] * self.sum_dim,
+            [0.0] * self.sum_dim,
             0,
         )
         for particle in self.p:
@@ -470,7 +470,11 @@ class PSO_BP:
                 + self.hidden_dim
             ].reshape(self.output_dim, self.hidden_dim)
         )
-        self.particle_net.predict.bias = torch.nn.Parameter(particle_x[104:105])
+        self.particle_net.predict.bias = torch.nn.Parameter(
+            particle_x[
+                self.hidden_dim * self.input_dim + self.hidden_dim + self.hidden_dim : self.sum_dim
+            ]
+        )
         prediction = self.particle_net(X)
         loss = F.mse_loss(prediction.reshape(-1), Y)
         return loss
@@ -479,10 +483,28 @@ class PSO_BP:
     def update_and_backward_Pbest(self, Pbest_net, Pbest_net_optimizer, X, Y, Pbest_pos):
         Pbest_pos = torch.tensor(Pbest_pos, dtype=torch.float)
 
-        Pbest_net.hidden.weight.data = torch.nn.Parameter(Pbest_pos[:78].reshape(13, 6))
-        Pbest_net.hidden.bias = torch.nn.Parameter(Pbest_pos[78:91])
-        Pbest_net.predict.weight = torch.nn.Parameter(Pbest_pos[91:104].reshape(1, 13))
-        Pbest_net.predict.bias = torch.nn.Parameter(Pbest_pos[104:105])
+        Pbest_net.hidden.weight.data = torch.nn.Parameter(
+            Pbest_pos[: self.hidden_dim * self.input_dim].reshape(self.hidden_dim, self.input_dim)
+        )
+        Pbest_net.hidden.bias = torch.nn.Parameter(
+            Pbest_pos[
+                self.hidden_dim * self.input_dim : self.hidden_dim * self.input_dim
+                + self.hidden_dim
+            ]
+        )
+        Pbest_net.predict.weight = torch.nn.Parameter(
+            Pbest_pos[
+                self.hidden_dim * self.input_dim
+                + self.hidden_dim : self.hidden_dim * self.input_dim
+                + self.hidden_dim
+                + self.hidden_dim
+            ].reshape(1, self.hidden_dim)
+        )
+        Pbest_net.predict.bias = torch.nn.Parameter(
+            Pbest_pos[
+                self.hidden_dim * self.input_dim + self.hidden_dim + self.hidden_dim : self.sum_dim
+            ]
+        )
 
         Pbest_prediction = Pbest_net(X)
         Pbest_loss = F.mse_loss(Pbest_prediction.reshape(-1), Y)
@@ -504,10 +526,28 @@ class PSO_BP:
     def update_and_backward_Gbest(self, X, Y, Gbest_pos):
         Gbest_pos = torch.tensor(Gbest_pos, dtype=torch.float)
 
-        self.Gbest_net.hidden.weight = torch.nn.Parameter(Gbest_pos[:78].reshape(13, 6))
-        self.Gbest_net.hidden.bias = torch.nn.Parameter(Gbest_pos[78:91])
-        self.Gbest_net.predict.weight = torch.nn.Parameter(Gbest_pos[91:104].reshape(1, 13))
-        self.Gbest_net.predict.bias = torch.nn.Parameter(Gbest_pos[104:105])
+        self.Gbest_net.hidden.weight = torch.nn.Parameter(
+            Gbest_pos[: self.hidden_dim * self.input_dim].reshape(self.hidden_dim, self.input_dim)
+        )
+        self.Gbest_net.hidden.bias = torch.nn.Parameter(
+            Gbest_pos[
+                self.hidden_dim * self.input_dim : self.hidden_dim * self.input_dim
+                + self.hidden_dim
+            ]
+        )
+        self.Gbest_net.predict.weight = torch.nn.Parameter(
+            Gbest_pos[
+                self.hidden_dim * self.input_dim
+                + self.hidden_dim : self.hidden_dim * self.input_dim
+                + self.hidden_dim
+                + self.hidden_dim
+            ].reshape(1, self.hidden_dim)
+        )
+        self.Gbest_net.predict.bias = torch.nn.Parameter(
+            Gbest_pos[
+                self.hidden_dim * self.input_dim + self.hidden_dim + self.hidden_dim : self.sum_dim
+            ]
+        )
 
         Gbest_prediction = self.Gbest_net(X)
         Gbest_loss = F.mse_loss(Gbest_prediction.reshape(-1), Y)
@@ -526,7 +566,7 @@ class PSO_BP:
 
     def compute_obs(self, c1, c2):
         train_data_x, train_data_y = data_processing()
-        iter = self.optimizer(train_data_x, train_data_y, c1, c2)
+        iter = self.pso_bp_optimizer(train_data_x, train_data_y, c1, c2)
         train_output = self.Gbest_net(train_data_x)
         print("train_data_y (label):", train_data_y)
         print("train_output:", train_output)
@@ -572,9 +612,7 @@ if __name__ == "__main__":
     input_dim = 15  # 输入维数
     output_dim = 1  # 输出维数
     hidden_dim = 32  # 隐藏层维数
-    sum_dim = (
-        (hidden_dim * input_dim) + hidden_dim + (hidden_dim * output_dim) + output_dim
-    )  # 粒子维数
+    sum_dim = (hidden_dim * input_dim) + hidden_dim + (hidden_dim * output_dim) + output_dim  # 粒子维数
     x_range = [-1, 1]  # 位置范围
     v_range = [-0.5, 0.5]  # 速度范围
     w_max = 0.9  # 惯性权重最大值
@@ -598,4 +636,4 @@ if __name__ == "__main__":
         max_iter,
         min_fitness,
     )
-    print(pso_bp.final_compute_one_obs(w, c1, c2))
+    print(pso_bp.compute_obs(c1, c2))

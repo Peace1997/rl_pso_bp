@@ -12,27 +12,44 @@ class ENV:
     def reset(
         self,
     ):
-        self.num_particle = 30  # 种群数量
-        self.dim = (13 * 6) + 13 + (13 * 1) + 1  # 粒子维数
-        self.x_range = [-1, 1]  # 位置范围
-        self.v_range = [-0.5, 0.5]  # 速度范围
-        self.w_max = 0.9  # 惯性权重最大值
-        self.w_min = 0.4  # 惯性权重最小值
-        self.max_iter = 300  # 最大迭代次∏数
+        self.num_particle = 30
+        self.input_dim = 15
+        self.output_dim = 1
+        self.hidden_dim = 32
+        self.sum_dim = (
+            (self.hidden_dim * self.input_dim)
+            + self.hidden_dim
+            + (self.hidden_dim * self.output_dim)
+            + self.output_dim
+        )
+        self.x_range = [-1, 1]
+        self.v_range = [-0.5, 0.5]
+
+        self.w_max = 0.9
+        self.w_min = 0.4
+        self.max_iter = 300
         self.iter = 0
         self.min_fitness = 0.002
-        w, c1, c2 = 0.5, 2, 2  # 学习因子
+        self.w = 0.5
+        self.c1 = 2
+        self.c2 = 2
         self.env = PSO_BP(
             self.num_particle,
-            self.dim,
+            self.input_dim,
+            self.hidden_dim,
+            self.output_dim,
+            self.sum_dim,
             self.x_range,
             self.v_range,
             self.w_max,
             self.w_min,
+            self.w,
+            self.c1,
+            self.c2,
             self.max_iter,
             self.min_fitness,
         )
-        obs = self.env.final_compute_one_obs(w, c1, c2)
+        obs = self.env.final_compute_one_obs(self.w, self.c1, self.c2)
         self.pre_gbest_loss = self.env.Gbest_loss
         self.pre_mean_diverse = obs[2]
         self.pre_action = [0.0, 0.0, 0.0]
@@ -43,7 +60,11 @@ class ENV:
         action = (action + 1) / 2
         reward = 0
         done = 0
-        w, c1, c2 = np.clip(action[0], 0.4, 0.9), np.clip(action[1], 0, 1) * 3, np.clip(action[2], 0, 1) * 3
+        w, c1, c2 = (
+            np.clip(action[0], 0.4, 0.9),
+            np.clip(action[1], 0, 1) * 3,
+            np.clip(action[2], 0, 1) * 3,
+        )
 
         obs = self.env.final_compute_one_obs(w, c1, c2)
         mean_diverse = obs[2]
