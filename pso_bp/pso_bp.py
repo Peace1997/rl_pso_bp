@@ -11,7 +11,7 @@ EPOCH = 1000  # 训练次数
 
 def data_processing():
     # 读取每一行的数据
-    with open("data/jss/jjs_thesis_train.csv", "r", encoding="utf-8") as csvfile:
+    with open("data/jss/jjs_thesis_train1.csv", "r", encoding="utf-8") as csvfile:
         reader = csv.reader(csvfile)
         rows = [row for row in reader]
     csvfile.close()
@@ -22,7 +22,7 @@ def data_processing():
     # 将每个str数据转换为float
     for i in range(file_row):
         for j in range(file_col):
-            rows[i][j] = float(rows[i][j].lstrip("\ufeff"))
+            rows[i][j] = float(rows[i][j])
 
     # 读取每一列的数据
     columns = []
@@ -568,11 +568,11 @@ class PSO_BP:
         train_data_x, train_data_y = data_processing()
         iter = self.pso_bp_optimizer(train_data_x, train_data_y, c1, c2)
         train_output = self.Gbest_net(train_data_x)
-        print("train_data_y (label):", train_data_y)
-        print("train_output:", train_output)
+        # print("train_data_y (label):", train_data_y)
+        # print("train_output:", train_output)
         train_loss = F.mse_loss(train_output.reshape(-1), train_data_y)
 
-        print("\ntrain loss:", train_loss)
+        # print("\ntrain loss:", train_loss)
 
         obs = (
             [train_loss.detach().numpy().tolist()]
